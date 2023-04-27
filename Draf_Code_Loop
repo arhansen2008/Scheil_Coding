@@ -1,0 +1,176 @@
+%%Here we clean up all the variables and close any open figures
+
+clearvars;
+close all
+
+%% 
+%Input Variables, these should be the only things you have to change...
+
+%Excel sheet should be set up with Elements in first row; if you care, the
+%last column will be selected as the dependent element. The composition in
+% wt% goes in each row; will add a feature later to accept other units.
+%You can have as many elements and composition as you want theoretically
+%But I have only tested 5 elements by 5 compositions as of now. 
+
+database = "TCHEA5";%Use the database name from TC. It is right there go find it
+start_temp = 2000; % in °C
+step_size = 1; % in °C
+final_solid_frac = 0.99; %Sometimes the calculatuons freeze up when trying to go to 1 lower to 0.99 if needed
+excel = 'Composition.xlsx' %if your excel sheet is named something else put it here, file should be in same folder
+
+[num, txt, raw] = xlsread(excel, 'Sheet1', '', 'basic'); %Pulls data from excel sheet
+%File name, Sheet name,...'basic' format returns the numeric and text data 
+%in a single output array, where empty cells are replaced by NaN. 
+%The '' input argument is used to specify the default sheet, 
+%and no range is specified, so all cells with data are read.
+
+dependent_element = string(txt(1,end));%dependent element will be first row, last column
+elementlist = string(txt(1,1:end-1)); %reads the first row and all but the last column
+%It does this, because thermocalc needs these elements vs the dependent
+%element when making calculations
+wt_pct = raw(2:end, 1:end-1); % element weight percentage in decimal format, excluding last column and first row
+num_rows = size(wt_pct, 1); %counts how many rows, will be used to tell the code how many times to loop
+
+
+
+
+%%
+%Start TC
+
+session = tc_toolbox.TCToolbox(); %connects MatLab to TC toolkit to run TC python code
+
+[filepath, name, ext] = fileparts(mfilename("fullpath")); %extracts the filepath for where this code is running
+session.set_cache_folder(name + "_cache"); %uses filepath info to make a cache folder to store working data
+
+%loops through this code for all the compositions
+for i = 1:num_rows %created an array earlier of just the composition values, so starts at 1 to i # of rows
+    
+%Grabs the variable inputs from above:
+
+    comps = wt_pct(i,:);%pulls the first row so that can get plugged into our scheil, modify this to change each iteration
+    composition = containers.Map(elementlist, comps); % in wt-% see chatlogs for explanation of Map()
+    elements = string(composition.keys()); %see chatlogs for explanation of keys()
+    % relevant_phase = "FCC_L12"; %Dont have a use for this yet, but would be
+    % use to focusing on specific phases
+
+
+    tc_system = session.select_database_and_elements(database, [dependent_element, elements]).get_system_for_scheil_calculations();
+        %loads up your elements and compositions into the TC database
+        %then calculates solid fractions and tempeartures... 
+    scheil_calculation = tc_system.with_scheil_calculation()...
+        .set_composition_unit(tc_toolbox.CompositionUnit.MASS_PERCENT)...%could change Mass% to tohers, type what those could be later
+            .with_options(tc_toolbox.scheil.ScheilOptions()...
+                .terminate_on_fraction_of_liquid_phase(1 - final_solid_frac))...%If your code is taking forever or crashing try decresaing Final Solid Fract to <1 (like 0.99)
+            .set_start_temperature(start_temp + 273.15)...%Converts T °C to K
+            .set_composition_unit(tc_toolbox.CompositionUnit.MASS_PERCENT);...%Do I need this twice?
+
+        %Overall, this loop is responsible for setting the composition of each 
+        %element in the scheil_calculation object based on the weight percentage 
+         %data provided in the composition map. See logs for more
+        for element = elements
+        scheil_calculation.set_composition(element, composition(element));
+        end
+
+    solidification = scheil_calculation.calculate(); %makes the calc happen
+
+    %%
+    %Plots and Figures and Data
+
+    % plot the solidification curve, I removed equilibrium calc, can add
+    % back if wanted
+    scheil_curve = solidification.get_values_grouped_by_stable_phases_of(...
+        tc_toolbox.ScheilQuantity.mole_fraction_of_all_solid_phases(),...%this line can be changed to other values later
+        tc_toolbox.ScheilQuantity.temperature());
+
+    %Exports the data
+    [mole_fraction_of_solid, temp1] = solidification.get_values_of(...
+                                tc_toolbox.ScheilQuantity...
+                                .mole_fraction_of_all_solid_phases(),...
+                                tc_toolbox.ScheilQuantity.temperature());
+                             %.mole_fraction_of_a_solid_phase("*"),... %use
+                             %this one if you want ALL the T and vol frac data (you don't
+                             %there is a lot of trailing data)
+
+    for j = 1:length(temp1)
+        temp1(j) = temp1(j) - 273.15; %Converts Temp back to °C
+    end
+
+
+    Data_Results = [mole_fraction_of_solid, temp1]; %creates an array for the exported data
+
+    temp_min = 1e6; %Idk why it is this value, play around
+    temp_max = -1e6; %Idk why it is this value, play around
+    %%
+    % Set figure size and label things
+    figure('Position', [10, 10, 800, 800]); %x pos, y pos, width, height
+    %figure()
+    subplot(2,1,1);
+    set(gca, 'Position', [0.2, 0.2, 1, 1] .* [0.8, 0.8, 0.7, 0.7]);
+    %The gca function is used to get a handle to the current axes object, and 
+    %the Position property is set to a vector specifying the position and 
+    %size of the plot area relative to the figure window. The values 
+    %[0.1, 0.2, 0.8, 0.7] specify that the plot should be positioned 10% 
+    %from the left edge of the figure window, 20% from the bottom edge, and 
+    %take up 80% of the width and 70% of the height of the figure window. 
+    %The .* [0, 0, 1, 1] term is used to adjust the position and size of the 
+    %plot area relative to the entire figure window, rather than just the 
+    %plot area of the current subplot. You can modify the values to achieve 
+    %your desired plot size and position.
+    sgtitle("Solidification of MPEA Test Composition " + num2str(i));
+    xlabel("Mole fraction of all solid phases [-]");
+    ylabel("Temperature [°C]");
+    leg3 = legend;
+    set(leg3, "Interpreter", "none");
+    hold on   
+    %%
+    %honestly not sure how this is messing with the chart, havent played much
+    %with it. Some ofit is obvious labeling and data pulling, just not certain
+    %what exactly each line does
+    for k = scheil_curve.keys()
+        label = k{1};  
+        section = scheil_curve(label);
+        plot(section.get_x(), section.get_y() - 273.15, "DisplayName", ...
+            section.get_label(), "LineWidth", 2)
+
+        temp_min = min(min(section.get_y()), temp_min);
+        temp_max = max(max(section.get_y()), temp_max);
+    end
+    xlim([0 1]);
+    ylim([temp_min temp_max] - 273.15);
+
+    %% 
+    %Export things and save
+
+
+    % Define the folder where you want to save the files
+    fig_foldername = 'Figure_Folder';
+    data_foldername = 'Data_Tables';
+
+    % Create the folder if it doesn't exist
+
+    if ~exist(fig_foldername, 'dir')
+        mkdir(fig_foldername);
+    end
+
+    if ~exist(data_foldername, 'dir')
+        mkdir(data_foldername);
+    end
+
+
+    %Exports the figure to a tif file
+     pfx = 'ScheilTestClean_Figure_';
+     outname = strcat(pfx, num2str(i), '.tif'); %num2str(i) use that in place if '1' later when you expand this to multiple iterations
+     %exportgraphics(gcf, outname)
+     fig_filename = fullfile(fig_foldername, outname);
+     saveas(gcf, fig_filename);
+
+     % Save Data_Results to a CSV file. Currently only does it to one, but we
+     % can either take Data_Results and expand it include all the data (or
+     % create a new variable to do so) or make the below generate a new csv
+     % with each run like we do the figure
+
+    pfx2 =  'Data_Results_Scheil1_';
+    outname2 = strcat(pfx2, num2str(i), '.csv'); %num2str(i) use that in place if '1' later when you expand this to multiple iterations
+    data_filename = fullfile(data_foldername, outname2);
+    csvwrite(data_filename, Data_Results);
+end

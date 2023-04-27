@@ -1,0 +1,14 @@
+And what about the "keys" function like below:
+
+
+    composition = containers.Map(elementlist, comps); % in wt-%
+    elements = string(composition.keys());
+    
+    
+In the code elements = string(composition.keys());, the keys() function is used to retrieve the keys of the composition object created earlier.
+
+containers.Map creates an object that associates keys with values. In this case, the elementlist and comps variables are used as the keys and values, respectively.
+
+composition.keys() returns an array of the keys in the composition object. The string() function is then used to convert the keys into an array of strings, which is assigned to the elements variable.
+
+So, elements is an array of strings containing the keys (i.e., the element names) in the composition object.

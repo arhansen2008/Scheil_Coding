@@ -16,7 +16,7 @@ database = "TCHEA5";%Use the database name from TC. It is right there go find it
 start_temp = 2000; % in °C
 step_size = 1; % in °C
 final_solid_frac = 0.99; %Sometimes the calculatuons freeze up when trying to go to 1 lower to 0.99 if needed
-excel = 'Composition.xlsx' %if your excel sheet is named something else put it here, file should be in same folder
+excel = 'Composition.xlsx'; %if your excel sheet is named something else put it here, file should be in same folder
 
 [num, txt, raw] = xlsread(excel, 'Sheet1', '', 'basic'); %Pulls data from excel sheet
 %File name, Sheet name,...'basic' format returns the numeric and text data 

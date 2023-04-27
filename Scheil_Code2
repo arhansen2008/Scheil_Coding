@@ -12,15 +12,21 @@ start_temp = 2000; % in °C
 step_size = 1; % in °C
 final_solid_frac = 0.99;
 
-%[num, txt, raw] = xlsread('Composition.xlsx', 'Sheet1', 'A1:D2');
-[num, txt, raw] = xlsread('Composition.xlsx', 'Sheet1', '', 'basic');
-elementlist = string(txt(1,1:end-1));
-%[num, txt, raw] = xlsread('Composition.xlsx', 'Sheet1', 'A2:D2');
-[num, txt, raw] = xlsread('Composition.xlsx', 'Sheet1', '', 'basic');
-wt_pct = double(num);
-composition = containers.Map(elementlist, wt_pct); % in wt-%
+%Pulls data from excel sheet
+[num, txt, raw] = xlsread('Composition.xlsx', 'Sheet1', '', 'basic'); %dependent element should be last column
+%File name, Sheet name,...'basic' format returns the numeric and text data 
+%in a single output array, where empty cells are replaced by NaN. 
+%The '' input argument is used to specify the default sheet, 
+%and no range is specified, so all cells with data are read.
+elementlist = string(txt(1,1:end-1)); %reads the first row and all but the last column
+wt_pct = raw(2:end, 1:end-1); % element weight percentage in decimal format, excluding last column and first row
+num_rows = size(wt_pct, 1); %counts how many rows, will be used to tell the code how many times to loop
+
+comps = wt_pct(1,:);%pulls the first row so that can get plugged into our scheil, modify this to change each iteration
+composition = containers.Map(elementlist, comps); % in wt-%
 elements = string(composition.keys());
-% relevant_phase = "FCC_L12";
+% relevant_phase = "FCC_L12"; %Dont have a use for this yet, but would be
+% use to focusing on specific phases
 
 
 %%

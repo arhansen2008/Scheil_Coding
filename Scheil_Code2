@@ -22,11 +22,7 @@ elementlist = string(txt(1,1:end-1)); %reads the first row and all but the last 
 wt_pct = raw(2:end, 1:end-1); % element weight percentage in decimal format, excluding last column and first row
 num_rows = size(wt_pct, 1); %counts how many rows, will be used to tell the code how many times to loop
 
-comps = wt_pct(1,:);%pulls the first row so that can get plugged into our scheil, modify this to change each iteration
-composition = containers.Map(elementlist, comps); % in wt-%
-elements = string(composition.keys());
-% relevant_phase = "FCC_L12"; %Dont have a use for this yet, but would be
-% use to focusing on specific phases
+
 
 
 %%
@@ -38,6 +34,14 @@ session = tc_toolbox.TCToolbox();
 session.set_cache_folder(name + "_cache");
 
 %Grabs the variable inputs from above:
+
+comps = wt_pct(1,:);%pulls the first row so that can get plugged into our scheil, modify this to change each iteration
+composition = containers.Map(elementlist, comps); % in wt-%
+elements = string(composition.keys());
+% relevant_phase = "FCC_L12"; %Dont have a use for this yet, but would be
+% use to focusing on specific phases
+
+
 tc_system = session.select_database_and_elements(database, [dependent_element, elements]).get_system_for_scheil_calculations();
 
 scheil_calculation = tc_system.with_scheil_calculation()...

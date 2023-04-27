@@ -24,6 +24,7 @@ excel = 'Composition.xlsx'; %if your excel sheet is named something else put it 
 %The '' input argument is used to specify the default sheet, 
 %and no range is specified, so all cells with data are read.
 
+sys_name = strjoin(sort(txt(1,1:end)),'');
 dependent_element = string(txt(1,end));%dependent element will be first row, last column
 elementlist = string(txt(1,1:end-1)); %reads the first row and all but the last column
 %It does this, because thermocalc needs these elements vs the dependent
@@ -31,22 +32,30 @@ elementlist = string(txt(1,1:end-1)); %reads the first row and all but the last 
 wt_pct = raw(2:end, 1:end-1); % element weight percentage in decimal format, excluding last column and first row
 num_rows = size(wt_pct, 1); %counts how many rows, will be used to tell the code how many times to loop
 
+%make a folder for the current alloy system if it does not already exist
+    if ~exist(sys_name, 'dir')
+        mkdir(sys_name);
+    end
 
-
+fold_dir = fullfile(pwd,sys_name);
 
 %%
 %Start TC
 
 session = tc_toolbox.TCToolbox(); %connects MatLab to TC toolkit to run TC python code
 
-[filepath, name, ext] = fileparts(mfilename("fullpath")); %extracts the filepath for where this code is running
-session.set_cache_folder(name + "_cache"); %uses filepath info to make a cache folder to store working data
+%[filepath, name, ext] = fileparts(mfilename("fullpath")); %extracts the filepath for where this code is running
+%session.set_cache_folder(name + "_cache"); %uses filepath info to make a cache folder to store working data
+session.set_cache_folder(fullfile(fold_dir, strcat(sys_name, '_cache'))); %replaces two lines above
+
 
 %loops through this code for all the compositions
 for i = 1:num_rows %created an array earlier of just the composition values, so starts at 1 to i # of rows
     
+    tic; % start timer
+    
 %Grabs the variable inputs from above:
-
+    try %this try is part of error handling, it SHOULD time out the code and move on if one iteration takes too long
     comps = wt_pct(i,:);%pulls the first row so that can get plugged into our scheil, modify this to change each iteration
     composition = containers.Map(elementlist, comps); % in wt-% see chatlogs for explanation of Map()
     elements = string(composition.keys()); %see chatlogs for explanation of keys()
@@ -70,8 +79,33 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
         for element = elements
         scheil_calculation.set_composition(element, composition(element));
         end
+        
+    time(i) = toc; % measure elapsed time
 
     solidification = scheil_calculation.calculate(); %makes the calc happen
+    
+    %%
+    %error handling based on timing out
+    time(i) = toc; % measure elapsed time
+    fprintf('Iteration %d completed in %f seconds.\n', i, time(i));
+        catch ME
+        warning('Error in iteration %d: %s', i, ME.message);
+        solid_fractions(i,:) = NaN;
+        time(i) = toc; % measure elapsed time
+        continue; % skip to the next iteration
+    end
+    
+        % add timeout condition
+    if time(i) > 500 % if iteration takes more than 500 seconds
+        warning('Iteration %d timed out.', i);
+        solid_fractions(i,:) = NaN;
+        fail_id = fopen('Failed_Runs.txt','a');%tracks failed runs
+        fprintf(fail_id,num2str(i));
+        fclose(fail_id);
+        continue; % skip to the next iteration
+    end
+
+    %%
 
     %%
     %Plots and Figures and Data
@@ -130,7 +164,7 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
         label = k{1};  
         section = scheil_curve(label);
         plot(section.get_x(), section.get_y() - 273.15, "DisplayName", ...
-            section.get_label(), "LineWidth", 2)
+            section.get_label(), "LineWidth", 2);
 
         temp_min = min(min(section.get_y()), temp_min);
         temp_max = max(max(section.get_y()), temp_max);
@@ -148,20 +182,22 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
 
     % Create the folder if it doesn't exist
 
-    if ~exist(fig_foldername, 'dir')
-        mkdir(fig_foldername);
-    end
+    
+if ~exist(fullfile(fold_dir, fig_foldername), 'dir')
+    mkdir(fullfile(fold_dir, fig_foldername));
+end
 
-    if ~exist(data_foldername, 'dir')
-        mkdir(data_foldername);
-    end
+if ~exist(fullfile(fold_dir, data_foldername), 'dir')
+    mkdir(fullfile(fold_dir, data_foldername));
+end
+
 
 
     %Exports the figure to a tif file
      pfx = 'ScheilTestClean_Figure_';
      outname = strcat(pfx, num2str(i), '.tif'); %num2str(i) use that in place if '1' later when you expand this to multiple iterations
      %exportgraphics(gcf, outname)
-     fig_filename = fullfile(fig_foldername, outname);
+     fig_filename = fullfile(fold_dir, fig_foldername, outname);
      saveas(gcf, fig_filename);
 
      % Save Data_Results to a CSV file. Currently only does it to one, but we
@@ -171,6 +207,12 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
 
     pfx2 =  'Data_Results_Scheil1_';
     outname2 = strcat(pfx2, num2str(i), '.csv'); %num2str(i) use that in place if '1' later when you expand this to multiple iterations
-    data_filename = fullfile(data_foldername, outname2);
+    data_filename = fullfile(fold_dir, data_foldername, outname2);
     csvwrite(data_filename, Data_Results);
+   
+    %saves the last succesful run
+    runID =fopen('Last_Run_ID','w');
+    fprintf(runID, num2str(i));
+    fclose(runID);
+   
 end

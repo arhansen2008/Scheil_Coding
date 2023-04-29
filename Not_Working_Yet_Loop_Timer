@@ -83,40 +83,50 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
 
 %solidification = scheil_calculation.calculate(); %makes the calc happen
 
-    % Set the maximum time allowed for one iteration
-    max_time = 60; % 60 seconds
+% Set the number of iterations and the maximum time for each iteration
+num_iterations = 10;
+max_time = 60; % in seconds
 
-    % Set the number of iterations
-    num_iterations = 10;
+% Create a parallel pool with the desired number of workers
+parpool('local', 4);
 
-    % Start the parallel pool
-    parpool();
+% Preallocate arrays to store the simulation results
+scheil_data = cell(num_iterations, 1);
+elapsed_time = zeros(num_iterations, 1);
 
-    % Start the timer in a separate thread
-    par_timer = tic;
-
-    % Start the parfor loop
-    parfor i = 1:num_iterations
-        % Start the timer for this iteration
-        iter_timer = tic;
-
-         solidification = scheil_calculation.calculate(); %makes the calc happen
-
-        % Check if the iteration took too long
-        elapsed_time = toc(iter_timer);
-        if elapsed_time > max_time
-            warning('Iteration %d took too long (%.2f seconds). Skipping to the next iteration...', i, elapsed_time);
-            continue;
-        end
-
-        % If the iteration completed within the allowed time, proceed with the next iteration
+% Loop over the iterations in parallel
+parfor i = 1:num_iterations
+    % Create a function handle for the Scheil calculation
+    f = @() scheil_calculation.calculate();
+    
+    % Start the timer
+    tic;
+    
+    % Call the function in a separate thread
+    future = parfeval(f);
+    
+    % Wait for the function to complete or for a timeout
+    try
+        % Wait for up to max_time seconds for the function to complete
+        [completed_idx, result] = fetchNext(future, 'Timeout', max_time);
+        elapsed_time(i) = toc;
+    catch ME
+        % Handle any errors or timeouts
+        warning('Simulation stopped at iteration %d. Error message: %s', i, ME.message);
+        elapsed_time(i) = toc;
+        continue;
     end
+    
+    % Check if the function completed successfully and handle the result
+    if completed_idx == 1
+        % Extract the data from the result
+        scheil_data{i} = result;
+    end
+end
 
-    % Stop the parallel timer
-    elapsed_time = toc(par_timer);
+% Delete the parallel pool
+delete(gcp);
 
-    % Close the parallel pool
-    delete(gcp);
 
     
 

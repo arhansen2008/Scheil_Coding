@@ -82,26 +82,41 @@ for i = 1:num_rows %created an array earlier of just the composition values, so 
         
 
 %solidification = scheil_calculation.calculate(); %makes the calc happen
-f = @() scheil_calculation.calculate();
 
-% Start the timer
-tic;
+    % Set the maximum time allowed for one iteration
+    max_time = 60; % 60 seconds
 
-% Call the function in a separate thread
-future = parfeval(f);
+    % Set the number of iterations
+    num_iterations = 10;
 
-% Wait for the function to complete and handle the result
-[completed_idx, result] = fetchOutputs(future);
-elapsed_time = toc;
+    % Start the parallel pool
+    parpool();
 
-% Check if the function completed successfully and handle the result
-if completed_idx == 1
-    % Extract the data from the result
-    scheil_data = result;
-else
-    % Handle any errors or timeouts
-    warning('Simulation stopped at iteration %d. Error message: %s', i, result.message);
-end
+    % Start the timer in a separate thread
+    par_timer = tic;
+
+    % Start the parfor loop
+    parfor i = 1:num_iterations
+        % Start the timer for this iteration
+        iter_timer = tic;
+
+         solidification = scheil_calculation.calculate(); %makes the calc happen
+
+        % Check if the iteration took too long
+        elapsed_time = toc(iter_timer);
+        if elapsed_time > max_time
+            warning('Iteration %d took too long (%.2f seconds). Skipping to the next iteration...', i, elapsed_time);
+            continue;
+        end
+
+        % If the iteration completed within the allowed time, proceed with the next iteration
+    end
+
+    % Stop the parallel timer
+    elapsed_time = toc(par_timer);
+
+    % Close the parallel pool
+    delete(gcp);
 
     
 
